@@ -67,10 +67,12 @@ public static class OctoShooterSetup
             "セットアップ完了！",
             "GameScene が作成されました。\n\n" +
             "▶ Play ボタンを押してゲームを起動できます！\n\n" +
-            "【修正内容】\n" +
-            "・弾が黄色の大きなドットで見やすくなりました\n" +
-            "・サメに弾が当たって倒せるようになりました\n" +
-            "・ステージ3・6・9...でボス（大型赤サメ）が出現します\n\n" +
+            "【仕様】\n" +
+            "・プレイヤーは ♥♥♥ 3ライフ制\n" +
+            "・サメに当たると1ライフ消費（3回でゲームオーバー）\n" +
+            "・サメは弾3発で倒せる\n" +
+            "・弾に黄色→オレンジの軌跡エフェクトあり\n" +
+            "・ステージ3・6・9...でボス出現\n\n" +
             "ドット絵に差し替えたい場合は\n" +
             "Assets/Sprites/ の PNG を置き換えてください。",
             "OK！");
@@ -178,6 +180,9 @@ public static class OctoShooterSetup
 
         var shark = go.AddComponent<SharkEnemy>();
         Set(shark, "spriteRenderer", sr);
+        SetFloat(shark, "baseHP",        60f);  // 弾3発(20dmg×3)で倒せる
+        SetFloat(shark, "baseMoveSpeed", 2.0f);
+        SetFloat(shark, "contactDamage", 10f);  // 接触ダメージ（1ライフ消費）
 
         string path = $"{PrefabDir}/Shark.prefab";
         var prefab = PrefabUtility.SaveAsPrefabAsset(go, path);
@@ -308,6 +313,13 @@ public static class OctoShooterSetup
         // ── UpgradeManager に UpgradeUI をセット ──
         Set(upgradeMgr, "upgradeUI", ui.upgradeUI);
 
+        // ── モバイル操作UI（ジョイスティック） ──
+        var (moveJoy, aimJoy) = BuildMobileControls();
+
+        // プレイヤーにジョイスティックを接続
+        player.GetComponent<PlayerController>().SetMoveJoystick(moveJoy);
+        player.GetComponent<PlayerShooter>().SetAimJoystick(aimJoy);
+
         // ── EventSystem ──
         var es = new GameObject("EventSystem");
         es.AddComponent<EventSystem>();
@@ -367,6 +379,81 @@ public static class OctoShooterSetup
         Set(shooter,    "bulletPrefab",   bulletPrefab.GetComponent<Bullet>());
 
         return go;
+    }
+
+    // ──────────────────────────────────────────────────
+    //  モバイル操作 UI（仮想ジョイスティック）
+    // ──────────────────────────────────────────────────
+    static (VirtualJoystick move, VirtualJoystick aim) BuildMobileControls()
+    {
+        var canvasGO = new GameObject("MobileControls");
+        var canvas   = canvasGO.AddComponent<Canvas>();
+        canvas.renderMode  = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 20; // HUD より前面
+
+        var scaler = canvasGO.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode         = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920, 1080);
+        scaler.matchWidthOrHeight  = 0.5f;
+
+        canvasGO.AddComponent<GraphicRaycaster>();
+
+        // 左：移動ジョイスティック
+        var moveJoy = MakeJoystick(canvasGO, "MoveJoystick",
+            new Vector2(200, 200), new Color(1f, 1f, 1f, 0.25f),
+            isLeft: true);
+
+        // 右：照準＆発射ジョイスティック
+        var aimJoy = MakeJoystick(canvasGO, "AimJoystick",
+            new Vector2(200, 200), new Color(0.96f, 0.84f, 0.20f, 0.30f),
+            isLeft: false);
+
+        return (moveJoy, aimJoy);
+    }
+
+    static VirtualJoystick MakeJoystick(
+        GameObject parent, string name, Vector2 size, Color bgColor, bool isLeft)
+    {
+        // ── ルート ──
+        var root = NewChild(parent, name);
+        float xPos = isLeft ? size.x * 0.5f + 40f : -(size.x * 0.5f + 40f);
+        var rootRect = root.GetComponent<RectTransform>();
+        rootRect.anchorMin = rootRect.anchorMax = isLeft
+            ? new Vector2(0f, 0f) : new Vector2(1f, 0f);
+        rootRect.sizeDelta        = size;
+        rootRect.anchoredPosition = new Vector2(xPos, size.y * 0.5f + 40f);
+
+        // ── バックグラウンド（半透明円） ──
+        var bg = NewChild(root, "Background");
+        var bgRect = bg.GetComponent<RectTransform>();
+        bgRect.anchorMin = Vector2.zero;
+        bgRect.anchorMax = Vector2.one;
+        bgRect.offsetMin = bgRect.offsetMax = Vector2.zero;
+        var bgImg = bg.AddComponent<Image>();
+        bgImg.color = bgColor;
+        // ※ Unity 標準の白Spriteで円形にはならないが半透明の四角で十分動作する
+
+        // ── ノブ（中心点） ──
+        var knob = NewChild(root, "Knob");
+        var knobRect = knob.GetComponent<RectTransform>();
+        knobRect.anchorMin = knobRect.anchorMax = new Vector2(0.5f, 0.5f);
+        knobRect.sizeDelta = new Vector2(80, 80);
+        knobRect.anchoredPosition = Vector2.zero;
+        var knobImg = knob.AddComponent<Image>();
+        knobImg.color = new Color(1f, 1f, 1f, 0.6f);
+
+        // ── VirtualJoystick コンポーネント ──
+        var joy = root.AddComponent<VirtualJoystick>();
+
+        // SerializedObject 経由で private フィールドにセット
+        var so   = new SerializedObject(joy);
+        var bgProp   = so.FindProperty("background");
+        var knobProp = so.FindProperty("knob");
+        if (bgProp   != null) bgProp.objectReferenceValue   = bgRect;
+        if (knobProp != null) knobProp.objectReferenceValue = knobRect;
+        so.ApplyModifiedProperties();
+
+        return joy;
     }
 
     // ──────────────────────────────────────────────────

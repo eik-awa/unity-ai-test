@@ -28,10 +28,11 @@ public class PlayerController : MonoBehaviour
     // ────────────────────────────────────────────────
     //  内部
     // ────────────────────────────────────────────────
-    private Rigidbody2D _rb;
-    private PlayerStats _stats;
-    private Vector2     _moveInput;
-    private bool        _canMove = true;
+    private Rigidbody2D    _rb;
+    private PlayerStats    _stats;
+    private Vector2        _moveInput;
+    private bool           _canMove = true;
+    private VirtualJoystick _moveJoystick; // モバイル用（OctoShooterSetup から設定）
 
     // ────────────────────────────────────────────────
     //  Unity ライフサイクル
@@ -75,15 +76,22 @@ public class PlayerController : MonoBehaviour
     // ────────────────────────────────────────────────
     private void ReadInput()
     {
+        // ── キーボード（PC） ──
+        Vector2 keyInput = Vector2.zero;
         var kb = Keyboard.current;
-        if (kb == null) { _moveInput = Vector2.zero; return; }
+        if (kb != null)
+        {
+            float x = (kb.dKey.isPressed || kb.rightArrowKey.isPressed ? 1f : 0f)
+                    - (kb.aKey.isPressed || kb.leftArrowKey.isPressed  ? 1f : 0f);
+            float y = (kb.wKey.isPressed || kb.upArrowKey.isPressed    ? 1f : 0f)
+                    - (kb.sKey.isPressed || kb.downArrowKey.isPressed  ? 1f : 0f);
+            keyInput = new Vector2(x, y);
+        }
 
-        float x = (kb.dKey.isPressed || kb.rightArrowKey.isPressed ? 1f : 0f)
-                - (kb.aKey.isPressed || kb.leftArrowKey.isPressed  ? 1f : 0f);
-        float y = (kb.wKey.isPressed || kb.upArrowKey.isPressed    ? 1f : 0f)
-                - (kb.sKey.isPressed || kb.downArrowKey.isPressed  ? 1f : 0f);
+        // ── バーチャルジョイスティック（スマホ） ──
+        Vector2 joyInput = _moveJoystick != null ? _moveJoystick.Direction : Vector2.zero;
 
-        _moveInput = new Vector2(x, y);
+        _moveInput = keyInput + joyInput;
         if (_moveInput.sqrMagnitude > 1f) _moveInput.Normalize();
     }
 
@@ -126,5 +134,11 @@ public class PlayerController : MonoBehaviour
     public void SetStats(PlayerStats stats)
     {
         _stats = stats;
+    }
+
+    /// <summary>モバイル用移動ジョイスティックを接続する（OctoShooterSetup から呼ぶ）</summary>
+    public void SetMoveJoystick(VirtualJoystick joystick)
+    {
+        _moveJoystick = joystick;
     }
 }

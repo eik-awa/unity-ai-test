@@ -12,10 +12,10 @@ public class SharkEnemy : EnemyBase
     //  Inspector
     // ────────────────────────────────────────────────
     [Header("チャージ攻撃")]
-    [SerializeField] private float chargeRange        = 4f;   // この距離以下でチャージ開始
-    [SerializeField] private float telegraphDuration  = 0.6f; // 予備動作の長さ（秒）
-    [SerializeField] private float chargeDuration     = 0.35f;// 突進の長さ（秒）
-    [SerializeField] private float chargeSpeedMult    = 4f;   // 突進速度倍率
+    [SerializeField] private float chargeRange        = 3f;   // この距離以下でチャージ開始
+    [SerializeField] private float telegraphDuration  = 0.8f; // 予備動作の長さ（秒）長めにして対応しやすく
+    [SerializeField] private float chargeDuration     = 0.30f;// 突進の長さ（秒）
+    [SerializeField] private float chargeSpeedMult    = 3f;   // 突進速度倍率（4→3で少し遅く）
     [SerializeField] private float chargeCooldown     = 2.5f; // チャージ再発動までの時間
 
     [Header("色")]
@@ -103,7 +103,7 @@ public class SharkEnemy : EnemyBase
         _stateTimer = chargeDuration;
         Rb.linearVelocity = _chargeDir * (MoveSpeed * chargeSpeedMult);
 
-        if (spriteRenderer) spriteRenderer.color = Color.white;
+        if (spriteRenderer) spriteRenderer.color = _originalColor;
     }
 
     private void EnterCooldown()

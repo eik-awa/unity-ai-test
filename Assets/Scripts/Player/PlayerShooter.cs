@@ -21,11 +21,12 @@ public class PlayerShooter : MonoBehaviour
     // ────────────────────────────────────────────────
     //  内部
     // ────────────────────────────────────────────────
-    private PlayerStats _stats;
-    private float       _nextFireTime;
-    private bool        _canShoot = true;
-    private Camera      _cam;
+    private PlayerStats      _stats;
+    private float            _nextFireTime;
+    private bool             _canShoot = true;
+    private Camera           _cam;
     private ObjectPool<Bullet> _pool;
+    private VirtualJoystick  _aimJoystick; // モバイル用照準ジョイスティック
 
     // ────────────────────────────────────────────────
     //  Unity ライフサイクル
@@ -61,11 +62,8 @@ public class PlayerShooter : MonoBehaviour
         if (!_canShoot) return;
         if (Time.time < _nextFireTime) return;
 
-        // マウスボタン押しっぱなし or 自動射撃（ペルソナ向け：常時オート）
-        if (Input.GetMouseButton(0) || true) // ← true にすることで常時オート射撃
-        {
-            Fire();
-        }
+        // 常時オート射撃（スマホ：右ジョイスティックで方向指定）
+        Fire();
     }
 
     // ────────────────────────────────────────────────
@@ -76,6 +74,12 @@ public class PlayerShooter : MonoBehaviour
     public void RefreshStats()
     {
         _stats = GetComponent<PlayerHealth>()?.Stats ?? _stats;
+    }
+
+    /// <summary>モバイル用照準ジョイスティックを接続する（OctoShooterSetup から呼ぶ）</summary>
+    public void SetAimJoystick(VirtualJoystick joystick)
+    {
+        _aimJoystick = joystick;
     }
 
     /// <summary>Bullet が範囲外に出たときプールに返す</summary>
@@ -123,9 +127,14 @@ public class PlayerShooter : MonoBehaviour
         b.Initialize(dir, _stats.bulletSpeed, _stats.bulletDamage, _stats.bulletRange, this);
     }
 
-    /// <summary>マウスカーソルへの方向（ワールド座標）</summary>
+    /// <summary>照準方向：右ジョイスティック優先、なければマウスカーソル方向</summary>
     private Vector2 GetAimDirection()
     {
+        // スマホ：右ジョイスティックの方向
+        if (_aimJoystick != null && _aimJoystick.Direction.sqrMagnitude > 0.01f)
+            return _aimJoystick.Direction;
+
+        // PC：マウスカーソルへの方向
         Vector3 mouseWorld = _cam.ScreenToWorldPoint(Input.mousePosition);
         mouseWorld.z = 0f;
         Vector2 dir = (mouseWorld - transform.position).normalized;

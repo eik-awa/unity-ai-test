@@ -35,6 +35,16 @@ public abstract class EnemyBase : MonoBehaviour
     protected Transform    PlayerTransform;
 
     // ────────────────────────────────────────────────
+    //  ビジュアル状態キャッシュ
+    // ────────────────────────────────────────────────
+    protected Color _originalColor;
+    private Vector3 _originalScale;
+    private float   _baseHPOriginal;
+    private float   _baseMoveSpeedOriginal;
+    private int     _scorePointsOriginal;
+    private Coroutine _hitFlashCoroutine;
+
+    // ────────────────────────────────────────────────
     //  Unity ライフサイクル
     // ────────────────────────────────────────────────
     protected virtual void Awake()
@@ -42,6 +52,13 @@ public abstract class EnemyBase : MonoBehaviour
         Rb = GetComponent<Rigidbody2D>();
         Rb.gravityScale = 0f;
         Rb.constraints  = RigidbodyConstraints2D.FreezeRotation;
+
+        // プレハブ設定値を元値として保存（ScaleToStage で上書きされても使える）
+        _baseHPOriginal        = baseHP;
+        _baseMoveSpeedOriginal = baseMoveSpeed;
+        _scorePointsOriginal   = scorePoints;
+        _originalScale         = transform.localScale;
+        if (spriteRenderer != null) _originalColor = spriteRenderer.color;
     }
 
     protected virtual void OnEnable()
@@ -49,6 +66,10 @@ public abstract class EnemyBase : MonoBehaviour
         IsDead    = false;
         CurrentHP = baseHP;
         MoveSpeed = baseMoveSpeed;
+
+        // プール再利用時にビジュアルをリセット
+        transform.localScale = _originalScale;
+        if (spriteRenderer != null) spriteRenderer.color = _originalColor;
 
         var player = PlayerController.Instance;
         if (player != null) PlayerTransform = player.transform;
@@ -76,7 +97,10 @@ public abstract class EnemyBase : MonoBehaviour
     {
         if (IsDead) return;
         CurrentHP -= damage;
-        StartCoroutine(HitFlash());
+
+        // 前のフラッシュを止めてから新しく開始（重複防止）
+        if (_hitFlashCoroutine != null) StopCoroutine(_hitFlashCoroutine);
+        _hitFlashCoroutine = StartCoroutine(HitFlash());
 
         if (CurrentHP <= 0f) Die();
     }
@@ -84,10 +108,11 @@ public abstract class EnemyBase : MonoBehaviour
     /// <summary>ステージごとにステータスをスケールさせる</summary>
     public virtual void ScaleToStage(int stageNumber)
     {
-        float mult = 1f + (stageNumber - 1) * 0.2f; // ステージごと20%強化
-        baseHP        *= mult;
-        baseMoveSpeed *= 1f + (stageNumber - 1) * 0.05f;
-        scorePoints   =  (int)(scorePoints * (1f + (stageNumber - 1) * 0.3f));
+        // 元値ベースで計算することで、プール再利用時に二重乗算されない
+        float mult    = 1f + (stageNumber - 1) * 0.2f;
+        baseHP        = _baseHPOriginal * mult;
+        baseMoveSpeed = _baseMoveSpeedOriginal * (1f + (stageNumber - 1) * 0.05f);
+        scorePoints   = (int)(_scorePointsOriginal * (1f + (stageNumber - 1) * 0.3f));
 
         CurrentHP = baseHP;
         MoveSpeed = baseMoveSpeed;
@@ -114,19 +139,67 @@ public abstract class EnemyBase : MonoBehaviour
         GameManager.Instance?.AddScore(scorePoints);
         StageManager.Instance?.NotifyEnemyDied();
 
-        // プールに返却（コールバックが設定されている場合）
-        // SetActive(false) は ObjectPool の actionOnRelease 内で呼ばれる
+        // 死亡エフェクト後にプール返却
+        StartCoroutine(DeathEffect());
+    }
+
+    /// <summary>ヒット時の視覚フィードバック（赤フラッシュ＋スケールパルス）</summary>
+    private IEnumerator HitFlash()
+    {
+        if (spriteRenderer == null) yield break;
+
+        // ヒット瞬間：白く光らせて大きく弾く（目立つように）
+        spriteRenderer.color = Color.white;
+        transform.localScale = _originalScale * 1.4f;
+
+        yield return new WaitForSeconds(0.05f);
+
+        // 赤に変わり少し縮む
+        spriteRenderer.color = new Color(1f, 0.15f, 0.15f);
+        transform.localScale = _originalScale * 0.85f;
+
+        yield return new WaitForSeconds(0.12f);
+
+        // 元に戻す（死亡中でなければ）
+        transform.localScale = _originalScale;
+        if (!IsDead && spriteRenderer != null)
+            spriteRenderer.color = _originalColor;
+    }
+
+    /// <summary>死亡エフェクト：スケールアップ＋フェードアウト後にプール返却</summary>
+    private IEnumerator DeathEffect()
+    {
+        // 進行中のヒットフラッシュを止めてスケールをリセット
+        if (_hitFlashCoroutine != null)
+        {
+            StopCoroutine(_hitFlashCoroutine);
+            _hitFlashCoroutine = null;
+            transform.localScale = _originalScale;
+        }
+
+        float elapsed  = 0f;
+        float duration = 0.18f;
+
+        while (elapsed < duration)
+        {
+            // Time.timeScale=0（アップグレード・ゲームオーバー画面）でも必ず完走させる
+            elapsed += Time.unscaledDeltaTime;
+            float p = Mathf.Clamp01(elapsed / duration);
+
+            // 膨らみながら白く消える
+            transform.localScale = _originalScale * (1f + p * 0.6f);
+            if (spriteRenderer != null)
+                spriteRenderer.color = new Color(1f, 1f, 1f, 1f - p);
+
+            yield return null;
+        }
+
+        // ビジュアルをリセットしてからプール返却（次の再利用のため）
+        transform.localScale = _originalScale;
+
         if (OnReturnToPool != null)
             OnReturnToPool(this);
         else
             gameObject.SetActive(false);
-    }
-
-    private IEnumerator HitFlash()
-    {
-        if (spriteRenderer == null) yield break;
-        spriteRenderer.color = Color.white * 2f; // 白フラッシュ
-        yield return new WaitForSeconds(0.05f);
-        spriteRenderer.color = Color.white;
     }
 }

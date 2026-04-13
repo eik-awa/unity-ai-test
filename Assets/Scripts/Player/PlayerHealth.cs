@@ -53,13 +53,13 @@ public class PlayerHealth : MonoBehaviour
     //  公開 API
     // ────────────────────────────────────────────────
 
-    /// <summary>ダメージを受ける。無敵時間中は無視。</summary>
+    /// <summary>ダメージを受ける。無敵時間中は無視。当たるたびに1ライフ消費。</summary>
     public void TakeDamage(float damage)
     {
         if (IsInvincible || IsDead) return;
 
-        float reduced = damage * (1f - Mathf.Clamp01(Stats.damageReduction));
-        CurrentHP = Mathf.Max(0f, CurrentHP - reduced);
+        // ライフ制：ダメージ量に関わらず1ライフ消費
+        CurrentHP = Mathf.Max(0f, CurrentHP - 1f);
 
         OnDamaged.Invoke();
         OnHPChanged.Invoke(CurrentHP, Stats.maxHP);

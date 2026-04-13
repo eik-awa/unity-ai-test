@@ -68,7 +68,10 @@ public class UIManager : MonoBehaviour
         }
         if (hpText)
         {
-            hpText.text = $"{Mathf.CeilToInt(current)} / {Mathf.CeilToInt(max)}";
+            // ライフ制：♥ で残ライフを表示
+            int lives    = Mathf.CeilToInt(current);
+            int maxLives = Mathf.CeilToInt(max);
+            hpText.text  = new string('♥', lives) + new string('♡', maxLives - lives);
         }
     }
 
