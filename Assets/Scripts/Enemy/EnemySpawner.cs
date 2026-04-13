@@ -14,6 +14,9 @@ public class EnemySpawner : MonoBehaviour
     [Header("敵プレハブ（増やすほど種類が増える）")]
     [SerializeField] private EnemyBase[] enemyPrefabs;
 
+    [Header("ボスプレハブ")]
+    [SerializeField] private BossEnemy bossPrefab;
+
     [Header("スポーン範囲（カメラ範囲より少し外側）")]
     [SerializeField] private float spawnMarginX = 10f;
     [SerializeField] private float spawnMarginY =  6f;
@@ -22,26 +25,41 @@ public class EnemySpawner : MonoBehaviour
     //  プール（種類ごとに1つ）
     // ────────────────────────────────────────────────
     private ObjectPool<EnemyBase>[] _pools;
+    private ObjectPool<BossEnemy>   _bossPool;
 
     // ────────────────────────────────────────────────
     //  Unity ライフサイクル
     // ────────────────────────────────────────────────
     private void Awake()
     {
-        if (enemyPrefabs == null || enemyPrefabs.Length == 0) return;
-
-        _pools = new ObjectPool<EnemyBase>[enemyPrefabs.Length];
-        for (int i = 0; i < enemyPrefabs.Length; i++)
+        if (enemyPrefabs != null && enemyPrefabs.Length > 0)
         {
-            int idx = i; // クロージャ用
-            _pools[i] = new ObjectPool<EnemyBase>(
-                createFunc:      () => Instantiate(enemyPrefabs[idx]),
+            _pools = new ObjectPool<EnemyBase>[enemyPrefabs.Length];
+            for (int i = 0; i < enemyPrefabs.Length; i++)
+            {
+                int idx = i; // クロージャ用
+                _pools[i] = new ObjectPool<EnemyBase>(
+                    createFunc:      () => Instantiate(enemyPrefabs[idx]),
+                    actionOnGet:     e  => e.gameObject.SetActive(true),
+                    actionOnRelease: e  => e.gameObject.SetActive(false),
+                    actionOnDestroy: e  => Destroy(e.gameObject),
+                    collectionCheck: false,
+                    defaultCapacity: 10,
+                    maxSize: 30
+                );
+            }
+        }
+
+        if (bossPrefab != null)
+        {
+            _bossPool = new ObjectPool<BossEnemy>(
+                createFunc:      () => Instantiate(bossPrefab),
                 actionOnGet:     e  => e.gameObject.SetActive(true),
                 actionOnRelease: e  => e.gameObject.SetActive(false),
                 actionOnDestroy: e  => Destroy(e.gameObject),
                 collectionCheck: false,
-                defaultCapacity: 10,
-                maxSize: 30
+                defaultCapacity: 2,
+                maxSize: 4
             );
         }
     }
@@ -50,20 +68,32 @@ public class EnemySpawner : MonoBehaviour
     //  公開 API（StageManager から呼ぶ）
     // ────────────────────────────────────────────────
 
-    /// <summary>1体スポーン。stageNumber に応じてスタッツをスケール。</summary>
+    /// <summary>通常敵を1体スポーン。stageNumber に応じてスタッツをスケール。</summary>
     public void SpawnEnemy(int stageNumber)
     {
         if (_pools == null || _pools.Length == 0) return;
 
-        // プレハブをランダム選択
-        int idx   = Random.Range(0, _pools.Length);
-        EnemyBase enemy = _pools[idx].Get();
+        int idx = Random.Range(0, _pools.Length);
+        var pool = _pools[idx];
 
-        // スポーン位置（画面の端から）
+        EnemyBase enemy = pool.Get();
+        enemy.OnReturnToPool = e => pool.Release(e); // プール返却コールバックを設定
         enemy.transform.position = RandomSpawnPosition();
-
-        // ステージに合わせてスタッツを強化
         enemy.ScaleToStage(stageNumber);
+    }
+
+    /// <summary>ボスをスポーン。stageNumber に応じてスタッツをスケール。</summary>
+    public bool SpawnBoss(int stageNumber)
+    {
+        if (_bossPool == null) return false;
+
+        BossEnemy boss = _bossPool.Get();
+        boss.OnReturnToPool = e => _bossPool.Release((BossEnemy)e);
+
+        // ボスは画面上端中央から登場
+        boss.transform.position = new Vector2(0f, spawnMarginY - 1f);
+        boss.ScaleToStage(stageNumber);
+        return true;
     }
 
     // ────────────────────────────────────────────────
@@ -71,7 +101,6 @@ public class EnemySpawner : MonoBehaviour
     // ────────────────────────────────────────────────
     private Vector2 RandomSpawnPosition()
     {
-        // 上下左右の辺からランダムに選ぶ
         int side = Random.Range(0, 4); // 0:上 1:下 2:左 3:右
         return side switch
         {

@@ -35,12 +35,14 @@ public static class OctoShooterSetup
         // ── スプライト（円形プレースホルダー）──
         Sprite sPlayer = MakeCircleSprite(16, new Color(0.61f, 0.49f, 0.78f), "Player");
         Sprite sShark  = MakeCircleSprite(16, new Color(0.50f, 0.64f, 0.73f), "Shark");
-        Sprite sBullet = MakeCircleSprite( 8, new Color(0.91f, 0.63f, 0.71f), "Bullet");
+        Sprite sBullet = MakeCircleSprite(16, new Color(0.96f, 0.84f, 0.20f), "Bullet", 8); // 16px / 8PPU = 2ワールド単位（見やすい黄色）
+        Sprite sBoss   = MakeCircleSprite(32, new Color(0.90f, 0.30f, 0.30f), "Boss",   8); // 32px / 8PPU = 4ワールド単位（大型ボス）
         AssetDatabase.Refresh();
 
         // ── プレハブ ──
         GameObject bulletPrefab = MakeBulletPrefab(sBullet);
         GameObject sharkPrefab  = MakeSharkPrefab(sShark);
+        GameObject bossPrefab   = MakeBossPrefab(sBoss);
         AssetDatabase.Refresh();
 
         // ── アップグレード SO（10種） ──
@@ -50,7 +52,7 @@ public static class OctoShooterSetup
         var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
 
         // ── シーン構築 ──
-        BuildScene(sPlayer, bulletPrefab, sharkPrefab, upgrades);
+        BuildScene(sPlayer, bulletPrefab, sharkPrefab, bossPrefab, upgrades);
 
         // Physics2D グラビティを 0 に
         SetGravity2DZero();
@@ -65,6 +67,10 @@ public static class OctoShooterSetup
             "セットアップ完了！",
             "GameScene が作成されました。\n\n" +
             "▶ Play ボタンを押してゲームを起動できます！\n\n" +
+            "【修正内容】\n" +
+            "・弾が黄色の大きなドットで見やすくなりました\n" +
+            "・サメに弾が当たって倒せるようになりました\n" +
+            "・ステージ3・6・9...でボス（大型赤サメ）が出現します\n\n" +
             "ドット絵に差し替えたい場合は\n" +
             "Assets/Sprites/ の PNG を置き換えてください。",
             "OK！");
@@ -89,10 +95,12 @@ public static class OctoShooterSetup
 
     // ──────────────────────────────────────────────────
     //  円形スプライト生成（ドット絵プレースホルダー）
+    //  ppu=0 の場合は size と同じ値を使う（1ワールド単位）
     // ──────────────────────────────────────────────────
-    static Sprite MakeCircleSprite(int size, Color color, string baseName)
+    static Sprite MakeCircleSprite(int size, Color color, string baseName, int ppu = 0)
     {
         string path = $"{SpriteDir}/{baseName}.png";
+        int sprPPU  = ppu > 0 ? ppu : size;
 
         var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
         tex.filterMode = FilterMode.Point;
@@ -114,7 +122,7 @@ public static class OctoShooterSetup
             imp.textureType         = TextureImporterType.Sprite;
             imp.filterMode          = FilterMode.Point;
             imp.mipmapEnabled       = false;
-            imp.spritePixelsPerUnit = size;
+            imp.spritePixelsPerUnit = sprPPU;
             imp.SaveAndReimport();
         }
         return AssetDatabase.LoadAssetAtPath<Sprite>(path);
@@ -132,12 +140,13 @@ public static class OctoShooterSetup
         sr.sortingOrder = 5;
 
         var rb = go.AddComponent<Rigidbody2D>();
-        rb.gravityScale = 0f;
-        rb.constraints  = RigidbodyConstraints2D.FreezeRotation;
+        rb.gravityScale          = 0f;
+        rb.constraints           = RigidbodyConstraints2D.FreezeRotation;
+        rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous; // 高速でも抜け防止
 
         var col = go.AddComponent<CircleCollider2D>();
         col.isTrigger = true;
-        col.radius    = 0.15f;
+        col.radius    = 0.4f; // スプライト(2unit)に合わせた半径
 
         go.AddComponent<Bullet>();
 
@@ -172,6 +181,40 @@ public static class OctoShooterSetup
 
         string path = $"{PrefabDir}/Shark.prefab";
         var prefab = PrefabUtility.SaveAsPrefabAsset(go, path);
+        Object.DestroyImmediate(go);
+        return prefab;
+    }
+
+    // ──────────────────────────────────────────────────
+    //  Boss プレハブ
+    // ──────────────────────────────────────────────────
+    static GameObject MakeBossPrefab(Sprite sprite)
+    {
+        var go = new GameObject("Boss");
+
+        var sr = go.AddComponent<SpriteRenderer>();
+        sr.sprite       = sprite;
+        sr.sortingOrder = 4;
+        sr.color        = new Color(0.90f, 0.30f, 0.30f);
+
+        var rb = go.AddComponent<Rigidbody2D>();
+        rb.gravityScale = 0f;
+        rb.constraints  = RigidbodyConstraints2D.FreezeRotation;
+
+        var col = go.AddComponent<CircleCollider2D>();
+        col.isTrigger = true;
+        col.radius    = 1.8f; // 4ユニットスプライトに合わせた大きめの当たり判定
+
+        var boss = go.AddComponent<BossEnemy>();
+        Set(boss,   "spriteRenderer", sr);
+        // ボスのステータスを SerializedObject で設定
+        SetFloat(boss, "baseHP",        500f);
+        SetFloat(boss, "baseMoveSpeed", 2.0f);
+        SetFloat(boss, "contactDamage", 30f);
+        SetInt  (boss, "scorePoints",   1000);
+
+        string path   = $"{PrefabDir}/Boss.prefab";
+        var prefab    = PrefabUtility.SaveAsPrefabAsset(go, path);
         Object.DestroyImmediate(go);
         return prefab;
     }
@@ -220,6 +263,7 @@ public static class OctoShooterSetup
         Sprite playerSprite,
         GameObject bulletPrefab,
         GameObject sharkPrefab,
+        GameObject bossPrefab,
         UpgradeDefinition[] upgrades)
     {
         // ── カメラ ──
@@ -234,8 +278,9 @@ public static class OctoShooterSetup
         var spawner    = mGO.AddComponent<EnemySpawner>();
         var uiMgr      = mGO.AddComponent<UIManager>();
 
-        // EnemySpawner に Shark をセット
+        // EnemySpawner に Shark・Boss をセット
         Set(spawner, "enemyPrefabs", new Object[]{ sharkPrefab.GetComponent<SharkEnemy>() });
+        Set(spawner, "bossPrefab",   bossPrefab.GetComponent<BossEnemy>());
 
         // StageManager に Spawner をセット
         Set(stageMgr, "spawner", spawner);
@@ -611,6 +656,24 @@ public static class OctoShooterSetup
         prop.arraySize = values.Length;
         for (int i = 0; i < values.Length; i++)
             prop.GetArrayElementAtIndex(i).objectReferenceValue = values[i];
+        so.ApplyModifiedProperties();
+    }
+
+    static void SetFloat(Object target, string field, float value)
+    {
+        var so   = new SerializedObject(target);
+        var prop = so.FindProperty(field);
+        if (prop == null) { Debug.LogWarning($"[Setup] field '{field}' not found on {target.GetType().Name}"); return; }
+        prop.floatValue = value;
+        so.ApplyModifiedProperties();
+    }
+
+    static void SetInt(Object target, string field, int value)
+    {
+        var so   = new SerializedObject(target);
+        var prop = so.FindProperty(field);
+        if (prop == null) { Debug.LogWarning($"[Setup] field '{field}' not found on {target.GetType().Name}"); return; }
+        prop.intValue = value;
         so.ApplyModifiedProperties();
     }
 }

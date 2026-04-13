@@ -26,6 +26,9 @@ public abstract class EnemyBase : MonoBehaviour
     // ────────────────────────────────────────────────
     public bool IsDead { get; private set; }
 
+    /// <summary>EnemySpawner がプール返却用に設定するコールバック</summary>
+    public System.Action<EnemyBase> OnReturnToPool;
+
     protected float        CurrentHP;
     protected float        MoveSpeed;
     protected Rigidbody2D  Rb { get; private set; }
@@ -111,8 +114,12 @@ public abstract class EnemyBase : MonoBehaviour
         GameManager.Instance?.AddScore(scorePoints);
         StageManager.Instance?.NotifyEnemyDied();
 
-        // 継承先でオーバーライドして死亡演出を追加可能
-        gameObject.SetActive(false);
+        // プールに返却（コールバックが設定されている場合）
+        // SetActive(false) は ObjectPool の actionOnRelease 内で呼ばれる
+        if (OnReturnToPool != null)
+            OnReturnToPool(this);
+        else
+            gameObject.SetActive(false);
     }
 
     private IEnumerator HitFlash()
