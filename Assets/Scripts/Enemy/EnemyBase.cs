@@ -98,11 +98,22 @@ public abstract class EnemyBase : MonoBehaviour
         if (IsDead) return;
         CurrentHP -= damage;
 
-        // 前のフラッシュを止めてから新しく開始（重複防止）
-        if (_hitFlashCoroutine != null) StopCoroutine(_hitFlashCoroutine);
-        _hitFlashCoroutine = StartCoroutine(HitFlash());
-
-        if (CurrentHP <= 0f) Die();
+        if (CurrentHP <= 0f)
+        {
+            // 死亡時はフラッシュを止めてすぐ Die へ（コルーチン競合を防ぐ）
+            if (_hitFlashCoroutine != null)
+            {
+                StopCoroutine(_hitFlashCoroutine);
+                _hitFlashCoroutine = null;
+            }
+            Die();
+        }
+        else
+        {
+            // 前のフラッシュを止めてから新しく開始（重複防止）
+            if (_hitFlashCoroutine != null) StopCoroutine(_hitFlashCoroutine);
+            _hitFlashCoroutine = StartCoroutine(HitFlash());
+        }
     }
 
     /// <summary>ステージごとにステータスをスケールさせる</summary>
@@ -148,17 +159,17 @@ public abstract class EnemyBase : MonoBehaviour
     {
         if (spriteRenderer == null) yield break;
 
-        // ヒット瞬間：白く光らせて大きく弾く（目立つように）
+        // ヒット瞬間：白く光らせて大きく弾く
         spriteRenderer.color = Color.white;
-        transform.localScale = _originalScale * 1.4f;
+        transform.localScale = _originalScale * 1.7f;
 
         yield return new WaitForSeconds(0.05f);
 
-        // 赤に変わり少し縮む
-        spriteRenderer.color = new Color(1f, 0.15f, 0.15f);
-        transform.localScale = _originalScale * 0.85f;
+        // 赤に変わり縮む
+        spriteRenderer.color = new Color(1f, 0.1f, 0.1f);
+        transform.localScale = _originalScale * 0.75f;
 
-        yield return new WaitForSeconds(0.12f);
+        yield return new WaitForSeconds(0.1f);
 
         // 元に戻す（死亡中でなければ）
         transform.localScale = _originalScale;
@@ -166,7 +177,10 @@ public abstract class EnemyBase : MonoBehaviour
             spriteRenderer.color = _originalColor;
     }
 
-    /// <summary>死亡エフェクト：スケールアップ＋フェードアウト後にプール返却</summary>
+    /// <summary>
+    /// 死亡エフェクト：白フラッシュ → 膨らみながらフェードアウト → プール返却
+    /// 明確に「倒した！」とわかるよう意図的に長めの演出にしている。
+    /// </summary>
     private IEnumerator DeathEffect()
     {
         // 進行中のヒットフラッシュを止めてスケールをリセット
@@ -177,17 +191,21 @@ public abstract class EnemyBase : MonoBehaviour
             transform.localScale = _originalScale;
         }
 
+        // ── フェーズ 1：眩しい白フラッシュ（0.06秒）──
+        if (spriteRenderer != null) spriteRenderer.color = Color.white;
+        transform.localScale = _originalScale * 2.0f;
+        yield return new WaitForSecondsRealtime(0.06f);
+
+        // ── フェーズ 2：爆発的に膨らみながら透明に消える（0.28秒）──
         float elapsed  = 0f;
-        float duration = 0.18f;
+        float duration = 0.28f;
 
         while (elapsed < duration)
         {
-            // Time.timeScale=0（アップグレード・ゲームオーバー画面）でも必ず完走させる
             elapsed += Time.unscaledDeltaTime;
             float p = Mathf.Clamp01(elapsed / duration);
 
-            // 膨らみながら白く消える
-            transform.localScale = _originalScale * (1f + p * 0.6f);
+            transform.localScale = _originalScale * Mathf.Lerp(2.0f, 3.5f, p);
             if (spriteRenderer != null)
                 spriteRenderer.color = new Color(1f, 1f, 1f, 1f - p);
 

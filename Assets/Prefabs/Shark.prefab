@@ -174,9 +174,9 @@ MonoBehaviour:
   contactDamage: 10
   scorePoints: 100
   spriteRenderer: {fileID: 2066960399657581824}
-  chargeRange: 4
-  telegraphDuration: 0.6
-  chargeDuration: 0.35
-  chargeSpeedMult: 4
+  chargeRange: 3
+  telegraphDuration: 0.8
+  chargeDuration: 0.3
+  chargeSpeedMult: 3
   chargeCooldown: 2.5
   telegraphColor: {r: 1, g: 0.6, b: 0.2, a: 1}
