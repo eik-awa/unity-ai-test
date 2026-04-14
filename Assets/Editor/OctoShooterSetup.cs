@@ -323,7 +323,7 @@ public static class OctoShooterSetup
         // ── EventSystem ──
         var es = new GameObject("EventSystem");
         es.AddComponent<EventSystem>();
-        es.AddComponent<StandaloneInputModule>();
+        es.AddComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>();
     }
 
     // ── カメラ ──────────────────────────────────────
